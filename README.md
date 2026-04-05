@@ -3,3 +3,9 @@
 基于(https://github.com/initiatione/codex-console-dev) 的适配temp mail版本
 
 邮箱服务需要选择Web2即可，其余操作与原版没有区别
+
+2026.4.5可用
+
+邮箱源于linux.do论坛
+
+
