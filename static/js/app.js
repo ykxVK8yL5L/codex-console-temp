@@ -63,6 +63,7 @@ const elements = {
     form: document.getElementById('registration-form'),
     emailService: document.getElementById('email-service'),
     emailServiceGroup: document.getElementById('email-service')?.closest('.form-group'),
+    enableAlias: document.getElementById('reg-enable-alias'),
     regMode: document.getElementById('reg-mode'),
     regModeGroup: document.getElementById('reg-mode-group'),
     batchCountGroup: document.getElementById('batch-count-group'),
@@ -199,7 +200,7 @@ async function loadServiceSelect(apiPath, container, checkbox, selectGroup) {
     let services = [];
     try {
         services = await api.get(apiPath);
-    } catch (e) {}
+    } catch (e) { }
 
     if (!services || services.length === 0) {
         checkbox.disabled = true;
@@ -703,6 +704,7 @@ function buildCurrentRegistrationConfig() {
     const baseConfig = {
         email_service_type: emailServiceType,
         reg_mode: isOutlookBatchMode ? 'outlook_batch' : (isBatchMode ? 'batch' : 'single'),
+        enable_alias: elements.enableAlias ? elements.enableAlias.checked : false,
         auto_upload_cpa: elements.autoUploadCpa ? elements.autoUploadCpa.checked : false,
         cpa_service_ids: elements.autoUploadCpa && elements.autoUploadCpa.checked ? getSelectedServiceIds(elements.cpaServiceSelect) : [],
         auto_upload_sub2api: elements.autoUploadSub2api ? elements.autoUploadSub2api.checked : false,
@@ -713,6 +715,7 @@ function buildCurrentRegistrationConfig() {
         new_api_service_ids: elements.autoUploadNewApi && elements.autoUploadNewApi.checked ? getSelectedServiceIds(elements.newApiServiceSelect) : [],
         filter_only_access_token_accounts: elements.filterOnlyAccessTokenAccounts ? elements.filterOnlyAccessTokenAccounts.checked : true,
     };
+    console.log(baseConfig)
 
     if (isOutlookBatchMode) {
         const selectedIds = [];
@@ -834,7 +837,7 @@ function setRegistrationConfigToForm(config) {
 
     elements.emailService.value = serviceValue;
     handleServiceChange({ target: elements.emailService });
-
+    elements.enableAlias.checked = !!registrationConfig.enable_alias;
     elements.autoUploadCpa.checked = !!registrationConfig.auto_upload_cpa;
     elements.cpaServiceSelectGroup.style.display = elements.autoUploadCpa.checked ? 'block' : 'none';
     elements.autoUploadSub2api.checked = !!registrationConfig.auto_upload_sub2api;
@@ -2000,11 +2003,11 @@ async function loadRecentAccounts() {
                 </td>
                 <td class="password-cell">
                     ${account.password
-                        ? `<span style="display:inline-flex;align-items:center;gap:4px;">
+                ? `<span style="display:inline-flex;align-items:center;gap:4px;">
                             <span class="password-hidden" title="点击查看">${escapeHtml(account.password.substring(0, 8))}...</span>
                             <button class="btn-copy-icon copy-pwd-btn" data-pwd="${escapeHtml(account.password)}" title="复制密码">📋</button>
                            </span>`
-                        : '-'}
+                : '-'}
                 </td>
                 <td>
                     ${getStatusIcon(account.status)}
@@ -2250,9 +2253,9 @@ function renderOutlookAccountsList() {
                 <div style="font-weight: 500;">${escapeHtml(account.email)}</div>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">
                     ${account.is_registered
-                        ? `<span style="color: var(--success-color);">✓ 已注册</span>`
-                        : '<span style="color: var(--primary-color);">未注册</span>'
-                    }
+            ? `<span style="color: var(--success-color);">✓ 已注册</span>`
+            : '<span style="color: var(--primary-color);">未注册</span>'
+        }
                     ${account.has_oauth ? ' | OAuth' : ''}
                 </div>
             </div>
@@ -2323,6 +2326,7 @@ async function handleOutlookBatchRegistration() {
         interval_max: intervalMax,
         concurrency: Math.min(50, Math.max(1, concurrency)),
         mode: mode,
+        enable_alias: elements.enableAlias ? elements.enableAlias.checked : false,
         auto_upload_cpa: elements.autoUploadCpa ? elements.autoUploadCpa.checked : false,
         cpa_service_ids: elements.autoUploadCpa && elements.autoUploadCpa.checked ? getSelectedServiceIds(elements.cpaServiceSelect) : [],
         auto_upload_sub2api: elements.autoUploadSub2api ? elements.autoUploadSub2api.checked : false,
