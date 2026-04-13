@@ -7,6 +7,11 @@ let outlookServices = [];
 let customServices = [];  // 合并 moe_mail + temp_mail + cloudmail + duck_mail + freemail + imap_mail
 let selectedOutlook = new Set();
 let selectedCustom = new Set();
+let outlookSettings = {
+    default_client_id: '',
+    redirect_uri: 'http://localhost:8080',
+    auth_url: ''
+};
 
 // DOM 元素
 const elements = {
@@ -37,6 +42,19 @@ const elements = {
     selectAllCustom: document.getElementById('select-all-custom'),
 
     // 临时邮箱
+    outlookOAuthForm: document.getElementById('outlook-oauth-form'),
+    oauthOutlookEmail: document.getElementById('oauth-outlook-email'),
+    oauthOutlookPassword: document.getElementById('oauth-outlook-password'),
+    oauthOutlookAuthUrl: document.getElementById('oauth-outlook-auth-url'),
+    copyOAuthAuthUrlBtn: document.getElementById('copy-oauth-auth-url-btn'),
+    openOAuthAuthUrlBtn: document.getElementById('open-oauth-auth-url-btn'),
+    oauthOutlookCallbackUrl: document.getElementById('oauth-outlook-callback-url'),
+    exchangeOAuthCallbackBtn: document.getElementById('exchange-oauth-callback-btn'),
+    oauthOutlookRefreshToken: document.getElementById('oauth-outlook-refresh-token'),
+    oauthOutlookPriority: document.getElementById('oauth-outlook-priority'),
+    oauthOutlookEnabled: document.getElementById('oauth-outlook-enabled'),
+    oauthOutlookSubmitBtn: document.getElementById('oauth-outlook-submit-btn'),
+
     tempmailForm: document.getElementById('tempmail-form'),
     tempmailApi: document.getElementById('tempmail-api'),
     tempmailEnabled: document.getElementById('tempmail-enabled'),
@@ -177,6 +195,18 @@ function initEventListeners() {
     elements.editOutlookForm.addEventListener('submit', handleEditOutlook);
 
     // 临时邮箱配置
+    if (elements.outlookOAuthForm) {
+        elements.outlookOAuthForm.addEventListener('submit', handleAddOutlookOAuth);
+    }
+    if (elements.copyOAuthAuthUrlBtn) {
+        elements.copyOAuthAuthUrlBtn.addEventListener('click', handleCopyOAuthAuthUrl);
+    }
+    if (elements.openOAuthAuthUrlBtn) {
+        elements.openOAuthAuthUrlBtn.addEventListener('click', handleOpenOAuthAuthUrl);
+    }
+    if (elements.exchangeOAuthCallbackBtn) {
+        elements.exchangeOAuthCallbackBtn.addEventListener('click', handleExchangeOAuthCallback);
+    }
     elements.tempmailForm.addEventListener('submit', handleSaveTempmail);
     elements.testTempmailBtn.addEventListener('click', handleTestTempmail);
     elements.testYydsBtn.addEventListener('click', handleTestYyds);
@@ -476,6 +506,14 @@ function renderCustomServices() {
 async function loadTempmailConfig() {
     try {
         const settings = await api.get('/settings');
+        const outlook_settings = await api.get('/settings/outlook');
+        settings.default_client_id = outlook_settings.default_client_id;
+        outlookSettings = {
+            default_client_id: outlook_settings.default_client_id || '',
+            redirect_uri: 'http://localhost:8080',
+            auth_url: ''
+        };
+        updateOutlookOAuthAuthUrl();
         if (settings.tempmail) {
             elements.tempmailApi.value = settings.tempmail.api_url || '';
             elements.tempmailEnabled.checked = settings.tempmail.enabled !== false;
@@ -489,6 +527,137 @@ async function loadTempmailConfig() {
         }
     } catch (error) {
         // 忽略错误
+    }
+}
+
+function buildOutlookOAuthAuthUrl() {
+    const clientId = String(outlookSettings.default_client_id || '').trim();
+    if (!clientId) return '';
+
+    const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: outlookSettings.redirect_uri,
+        response_mode: 'query',
+        scope: 'offline_access https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Mail.ReadWrite https://graph.microsoft.com/User.Read',
+        state: '12345'
+    });
+
+    return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
+}
+
+function updateOutlookOAuthAuthUrl() {
+    outlookSettings.auth_url = buildOutlookOAuthAuthUrl();
+    if (elements.oauthOutlookAuthUrl) {
+        elements.oauthOutlookAuthUrl.value = outlookSettings.auth_url;
+        elements.oauthOutlookAuthUrl.placeholder = outlookSettings.auth_url
+            ? ''
+            : '未配置默认 Client ID，请先到设置页面配置 Outlook 默认 Client ID';
+    }
+}
+
+async function handleCopyOAuthAuthUrl() {
+    if (!outlookSettings.auth_url) {
+        toast.error('未生成授权链接，请先配置默认 Client ID');
+        return;
+    }
+    await copyToClipboard(outlookSettings.auth_url);
+}
+
+function handleOpenOAuthAuthUrl() {
+    if (!outlookSettings.auth_url) {
+        toast.error('未生成授权链接，请先配置默认 Client ID');
+        return;
+    }
+    window.open(outlookSettings.auth_url, '_blank', 'noopener,noreferrer');
+}
+
+async function handleExchangeOAuthCallback() {
+    const callbackUrl = elements.oauthOutlookCallbackUrl.value.trim();
+    if (!callbackUrl) {
+        toast.error('请先粘贴回调 URL');
+        return;
+    }
+    if (!outlookSettings.default_client_id) {
+        toast.error('缺少默认 Client ID，请先到设置页面配置');
+        return;
+    }
+
+    const originalText = elements.exchangeOAuthCallbackBtn.textContent;
+    elements.exchangeOAuthCallbackBtn.disabled = true;
+    elements.exchangeOAuthCallbackBtn.textContent = '换取中...';
+
+    try {
+        const result = await api.post('/email-services/outlook/exchange-callback', {
+            callback_url: callbackUrl,
+            client_id: outlookSettings.default_client_id,
+            redirect_uri: outlookSettings.redirect_uri
+        });
+        elements.oauthOutlookRefreshToken.value = result.refresh_token || '';
+        toast.success('已获取 Refresh Token');
+    } catch (error) {
+        toast.error('获取 Token 失败: ' + error.message);
+    } finally {
+        elements.exchangeOAuthCallbackBtn.disabled = false;
+        elements.exchangeOAuthCallbackBtn.textContent = originalText;
+    }
+}
+
+// 添加 Outlook OAuth 邮箱
+async function handleAddOutlookOAuth(e) {
+    e.preventDefault();
+
+    const email = elements.oauthOutlookEmail.value.trim().toLowerCase();
+    const password = elements.oauthOutlookPassword.value.trim();
+    const clientId = outlookSettings.default_client_id || '';
+    const refreshToken = elements.oauthOutlookRefreshToken.value.trim();
+    const priority = parseInt(elements.oauthOutlookPriority.value, 10) || 0;
+    const enabled = elements.oauthOutlookEnabled.checked;
+
+    if (!email) {
+        toast.error('请输入邮箱地址');
+        return;
+    }
+    if (!refreshToken) {
+        toast.error('请输入 OAuth Refresh Token');
+        return;
+    }
+    if (!clientId) {
+        toast.error('缺少 Client ID，请填写或在设置中配置默认 Client ID');
+        return;
+    }
+
+    const payload = {
+        service_type: 'outlook',
+        name: email,
+        enabled,
+        priority,
+        config: {
+            email,
+            password,
+            client_id: clientId,
+            refresh_token: refreshToken
+        }
+    };
+
+    const originalText = elements.oauthOutlookSubmitBtn.textContent;
+    elements.oauthOutlookSubmitBtn.disabled = true;
+    elements.oauthOutlookSubmitBtn.textContent = '添加中...';
+
+    try {
+        await api.post('/email-services', payload);
+        toast.success('OAuth 邮箱添加成功');
+        elements.outlookOAuthForm.reset();
+        elements.oauthOutlookEnabled.checked = true;
+        elements.oauthOutlookPriority.value = '0';
+        updateOutlookOAuthAuthUrl();
+        loadOutlookServices();
+        loadStats();
+    } catch (error) {
+        toast.error('添加失败: ' + error.message);
+    } finally {
+        elements.oauthOutlookSubmitBtn.disabled = false;
+        elements.oauthOutlookSubmitBtn.textContent = originalText;
     }
 }
 
@@ -814,21 +983,21 @@ async function editCustomService(id, subType) {
                 ? 'tempmail_builtin'
                 : service.service_type === 'yyds_mail'
                     ? 'yyds_mail'
-                : service.service_type === 'web2'
-                    ? 'web2'
-                : service.service_type === 'temp_mail'
-                ? 'tempmail'
-                : service.service_type === 'cloudmail'
-                    ? 'cloudmail'
-                : service.service_type === 'duck_mail'
-                    ? 'duckmail'
-                    : service.service_type === 'luckmail'
-                        ? 'luckmail'
-                    : service.service_type === 'freemail'
-                        ? 'freemail'
-                        : service.service_type === 'imap_mail'
-                            ? 'imap'
-                            : 'moemail'
+                    : service.service_type === 'web2'
+                        ? 'web2'
+                        : service.service_type === 'temp_mail'
+                            ? 'tempmail'
+                            : service.service_type === 'cloudmail'
+                                ? 'cloudmail'
+                                : service.service_type === 'duck_mail'
+                                    ? 'duckmail'
+                                    : service.service_type === 'luckmail'
+                                        ? 'luckmail'
+                                        : service.service_type === 'freemail'
+                                            ? 'freemail'
+                                            : service.service_type === 'imap_mail'
+                                                ? 'imap'
+                                                : 'moemail'
         );
 
         document.getElementById('edit-custom-id').value = service.id;
