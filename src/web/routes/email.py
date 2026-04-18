@@ -2,6 +2,7 @@
 邮箱服务配置 API 路由
 """
 
+import json
 import logging
 import urllib.parse
 from typing import List, Optional, Dict, Any
@@ -673,6 +674,128 @@ async def get_email_service(service_id: int):
         if not service:
             raise HTTPException(status_code=404, detail="服务不存在")
         return service_to_response(service)
+
+
+def _build_inbox_config(db, service_type, email: str) -> dict:
+    """根据账号邮箱服务类型从数据库构建服务配置（不传 proxy_url）"""
+    from ...database.models import EmailService as EmailServiceModel
+    from ...services import EmailServiceType as EST
+
+    if service_type == EST.TEMPMAIL:
+        settings = get_settings()
+        return {
+            "base_url": settings.tempmail_base_url,
+            "timeout": settings.tempmail_timeout,
+            "max_retries": settings.tempmail_max_retries,
+        }
+
+    if service_type == EST.YYDS_MAIL:
+        settings = get_settings()
+        return {
+            "base_url": settings.yyds_mail_base_url,
+            "api_key": (
+                settings.yyds_mail_api_key.get_secret_value()
+                if settings.yyds_mail_api_key
+                else ""
+            ),
+            "default_domain": settings.yyds_mail_default_domain,
+            "timeout": settings.yyds_mail_timeout,
+            "max_retries": settings.yyds_mail_max_retries,
+        }
+
+    if service_type == EST.MOE_MAIL:
+        # 按域名后缀匹配，找不到则取 priority 最小的
+        domain = email.split("@")[1] if "@" in email else ""
+        services = (
+            db.query(EmailServiceModel)
+            .filter(
+                EmailServiceModel.service_type == "moe_mail",
+                EmailServiceModel.enabled == True,
+            )
+            .order_by(EmailServiceModel.priority.asc())
+            .all()
+        )
+        svc = None
+        for s in services:
+            cfg = s.config or {}
+            if cfg.get("default_domain") == domain or cfg.get("domain") == domain:
+                svc = s
+                break
+        if not svc and services:
+            svc = services[0]
+        if not svc:
+            return None
+        cfg = svc.config.copy()
+        if "api_url" in cfg and "base_url" not in cfg:
+            cfg["base_url"] = cfg.pop("api_url")
+        return cfg
+
+    # 其余服务类型：直接按 service_type 查数据库
+    type_map = {
+        EST.TEMP_MAIL: "temp_mail",
+        EST.DUCK_MAIL: "duck_mail",
+        EST.FREEMAIL: "freemail",
+        EST.IMAP_MAIL: "imap_mail",
+        EST.OUTLOOK: "outlook",
+        EST.LUCKMAIL: "luckmail",
+    }
+    db_type = type_map.get(service_type)
+    if not db_type:
+        return None
+
+    query = db.query(EmailServiceModel).filter(
+        EmailServiceModel.service_type == db_type, EmailServiceModel.enabled == True
+    )
+    if service_type == EST.OUTLOOK:
+        # 按 config.email 匹配账号 email
+        services = query.all()
+        svc = next(
+            (s for s in services if (s.config or {}).get("email") == email), None
+        )
+    else:
+        svc = query.order_by(EmailServiceModel.priority.asc()).first()
+
+    if not svc:
+        return None
+    cfg = svc.config.copy() if svc.config else {}
+    if "api_url" in cfg and "base_url" not in cfg:
+        cfg["base_url"] = cfg.pop("api_url")
+    return cfg
+
+
+@router.post("/{service_id}/inbox-code")
+async def get_account_inbox_code(service_id: int):
+    """查询账号邮箱收件箱最新验证码"""
+    from ...services import EmailServiceFactory, EmailServiceType
+
+    with get_db() as db:
+        service = (
+            db.query(EmailServiceModel)
+            .filter(EmailServiceModel.id == service_id)
+            .first()
+        )
+        if not service:
+            raise HTTPException(status_code=404, detail="服务不存在")
+
+        try:
+            service_type = EmailServiceType(service.service_type)
+        except ValueError:
+            return {"success": False, "error": "不支持的邮箱服务类型"}
+
+        config = _build_inbox_config(db, service_type, service.config.get("email"))
+        if config is None:
+            return {"success": False, "error": "未找到可用的邮箱服务配置"}
+
+        try:
+            svc = EmailServiceFactory.create(service_type, config)
+            code = svc.get_verification_code(config.get("email"), timeout=12)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+        if not code:
+            return {"success": False, "error": "未收到验证码邮件"}
+
+        return {"success": True, "code": code, "email": config.get("email")}
 
 
 @router.get("/{service_id}/full")

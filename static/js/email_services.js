@@ -105,6 +105,11 @@ const elements = {
     editOutlookForm: document.getElementById('edit-outlook-form'),
     closeEditOutlookModal: document.getElementById('close-edit-outlook-modal'),
     cancelEditOutlook: document.getElementById('cancel-edit-outlook'),
+
+
+    detailModal: document.getElementById('detail-modal'),
+    modalBody: document.getElementById('modal-body'),
+    closeModal: document.getElementById('close-modal'),
 };
 
 const CUSTOM_SUBTYPE_LABELS = {
@@ -159,6 +164,19 @@ function initEventListeners() {
 
     // Outlook 批量删除
     elements.batchDeleteOutlookBtn.addEventListener('click', handleBatchDeleteOutlook);
+
+
+    // 关闭模态框
+    elements.closeModal.addEventListener('click', () => {
+        elements.detailModal.classList.remove('active');
+    });
+
+    elements.detailModal.addEventListener('click', (e) => {
+        if (e.target === elements.detailModal) {
+            elements.detailModal.classList.remove('active');
+        }
+    });
+
 
     // 自定义域名全选
     elements.selectAllCustom.addEventListener('change', (e) => {
@@ -273,6 +291,37 @@ async function loadStats() {
     }
 }
 
+// 查询收件箱验证码
+async function checkInboxCode(id) {
+    toast.info('正在查询收件箱...');
+    try {
+        const result = await api.post(`/email-services/${id}/inbox-code`);
+        if (result.success) {
+            showInboxCodeResult(result.code, result.email);
+        } else {
+            toast.error('查询失败: ' + (result.error || '未收到验证码'));
+        }
+    } catch (error) {
+        toast.error('查询失败: ' + error.message);
+    }
+}
+
+function showInboxCodeResult(code, email) {
+    elements.modalBody.innerHTML = `
+        <div style="text-align:center; padding:24px 16px;">
+            <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">
+                ${escapeHtml(email)} 最新验证码
+            </div>
+            <div style="font-size:36px;font-weight:700;letter-spacing:8px;
+                        color:var(--primary);font-family:monospace;margin-bottom:20px;">
+                ${escapeHtml(code)}
+            </div>
+            <button class="btn btn-primary" onclick="copyToClipboard('${escapeHtml(code)}')">复制验证码</button>
+        </div>
+    `;
+    elements.detailModal.classList.add('active');
+}
+
 // 加载 Outlook 服务
 async function loadOutlookServices() {
     try {
@@ -307,6 +356,7 @@ async function loadOutlookServices() {
                 <td>${format.date(service.last_used)}</td>
                 <td>
                     <div style="display:flex;gap:4px;align-items:center;white-space:nowrap;">
+                     <button class="btn btn-secondary btn-sm" onclick="checkInboxCode(${service.id})">收件箱</button>
                         <button class="btn btn-secondary btn-sm" onclick="editOutlookService(${service.id})">编辑</button>
                         <button class="btn ${service.enabled ? 'btn-warning' : 'btn-success'} btn-sm" onclick="toggleService(${service.id}, ${!service.enabled})">${service.enabled ? '禁用' : '启用'}</button>
                         <button class="btn btn-secondary btn-sm" onclick="testService(${service.id})">测试</button>

@@ -1,6 +1,7 @@
 """
 账号管理 API 路由
 """
+
 import io
 import asyncio
 import json
@@ -23,10 +24,17 @@ from ...config.settings import get_settings
 from ...core.openai.overview import fetch_codex_overview, AccountDeactivatedError
 from ...core.openai.token_refresh import refresh_account_token as do_refresh
 from ...core.openai.token_refresh import validate_account_token as do_validate
-from ...core.upload.cpa_upload import generate_token_json, batch_upload_to_cpa, upload_to_cpa
+from ...core.upload.cpa_upload import (
+    generate_token_json,
+    batch_upload_to_cpa,
+    upload_to_cpa,
+)
 from ...core.upload.sub2api_upload import batch_upload_to_sub2api, upload_to_sub2api
 from ...core.upload.new_api_upload import batch_upload_to_new_api, upload_to_new_api
-from ...core.upload.codex2api_upload import batch_upload_to_codex2api, upload_to_codex2api
+from ...core.upload.codex2api_upload import (
+    batch_upload_to_codex2api,
+    upload_to_codex2api,
+)
 
 from ...core.dynamic_proxy import get_proxy_url_for_task
 from ...core.timezone_utils import utcnow_naive
@@ -107,7 +115,11 @@ def _get_quick_refresh_candidate_ids() -> List[int]:
         query = (
             db.query(Account.id)
             .filter(func.length(func.trim(func.coalesce(Account.access_token, ""))) > 0)
-            .filter(~Account.status.in_((AccountStatus.FAILED.value, AccountStatus.BANNED.value)))
+            .filter(
+                ~Account.status.in_(
+                    (AccountStatus.FAILED.value, AccountStatus.BANNED.value)
+                )
+            )
             .order_by(Account.id.asc())
         )
         return [int(row[0]) for row in query.all()]
@@ -132,8 +144,10 @@ def has_active_batch_operations() -> bool:
 
 # ============== Pydantic Models ==============
 
+
 class AccountResponse(BaseModel):
     """账号响应模型"""
+
     id: int
     email: str
     password: Optional[str] = None
@@ -160,12 +174,14 @@ class AccountResponse(BaseModel):
 
 class AccountListResponse(BaseModel):
     """账号列表响应"""
+
     total: int
     accounts: List[AccountResponse]
 
 
 class AccountUpdateRequest(BaseModel):
     """账号更新请求"""
+
     status: Optional[str] = None
     metadata: Optional[dict] = None
     cookies: Optional[str] = None  # 完整 cookie 字符串，用于支付请求
@@ -174,6 +190,7 @@ class AccountUpdateRequest(BaseModel):
 
 class ManualAccountCreateRequest(BaseModel):
     """手动创建账号请求"""
+
     email: str
     password: str
     email_service: Optional[str] = "manual"
@@ -194,6 +211,7 @@ class ManualAccountCreateRequest(BaseModel):
 
 class AccountImportItem(BaseModel):
     """账号导入项（支持按账号详情字段导入）"""
+
     email: str
     password: Optional[str] = None
     email_service: Optional[str] = "manual"
@@ -225,12 +243,14 @@ class AccountImportItem(BaseModel):
 
 class ImportAccountsRequest(BaseModel):
     """批量导入账号请求"""
+
     accounts: List[dict]
     overwrite: bool = False
 
 
 class BatchDeleteRequest(BaseModel):
     """批量删除请求"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -240,12 +260,14 @@ class BatchDeleteRequest(BaseModel):
 
 class BatchUpdateRequest(BaseModel):
     """批量更新请求"""
+
     ids: List[int]
     status: str
 
 
 class OverviewRefreshRequest(BaseModel):
     """账号总览刷新请求"""
+
     ids: List[int] = []
     force: bool = True
     select_all: bool = False
@@ -257,6 +279,7 @@ class OverviewRefreshRequest(BaseModel):
 
 class OverviewCardDeleteRequest(BaseModel):
     """账号总览卡片删除（仅从卡片移除，不删除账号）"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -265,6 +288,7 @@ class OverviewCardDeleteRequest(BaseModel):
 
 
 # ============== Helper Functions ==============
+
 
 def resolve_account_ids(
     db,
@@ -301,15 +325,21 @@ def account_to_response(account: Account) -> AccountResponse:
         account_id=account.account_id,
         workspace_id=account.workspace_id,
         device_id=_resolve_account_device_id(account),
-        registered_at=account.registered_at.isoformat() if account.registered_at else None,
+        registered_at=(
+            account.registered_at.isoformat() if account.registered_at else None
+        ),
         last_refresh=account.last_refresh.isoformat() if account.last_refresh else None,
         expires_at=account.expires_at.isoformat() if account.expires_at else None,
         status=account.status,
         proxy_used=account.proxy_used,
         cpa_uploaded=account.cpa_uploaded or False,
-        cpa_uploaded_at=account.cpa_uploaded_at.isoformat() if account.cpa_uploaded_at else None,
+        cpa_uploaded_at=(
+            account.cpa_uploaded_at.isoformat() if account.cpa_uploaded_at else None
+        ),
         subscription_type=account.subscription_type,
-        subscription_at=account.subscription_at.isoformat() if account.subscription_at else None,
+        subscription_at=(
+            account.subscription_at.isoformat() if account.subscription_at else None
+        ),
         cookies=account.cookies,
         created_at=account.created_at.isoformat() if account.created_at else None,
         updated_at=account.updated_at.isoformat() if account.updated_at else None,
@@ -318,7 +348,9 @@ def account_to_response(account: Account) -> AccountResponse:
 
 def _mark_accounts_scheduler_uploaded(db, account_ids: List[int]) -> None:
     """将账号标记为已导入任一调度平台。"""
-    normalized_ids = sorted({int(account_id) for account_id in (account_ids or []) if int(account_id) > 0})
+    normalized_ids = sorted(
+        {int(account_id) for account_id in (account_ids or []) if int(account_id) > 0}
+    )
     if not normalized_ids:
         return
 
@@ -353,7 +385,9 @@ def _extract_session_token_from_cookie_text(cookies_text: Optional[str]) -> str:
     if direct:
         return str(direct.group(1) or "").strip()
 
-    parts = re.findall(r"(?:^|;\s*)__Secure-next-auth\.session-token\.(\d+)=([^;]+)", text)
+    parts = re.findall(
+        r"(?:^|;\s*)__Secure-next-auth\.session-token\.(\d+)=([^;]+)", text
+    )
     if not parts:
         return ""
 
@@ -441,10 +475,14 @@ def _build_unknown_quota() -> dict:
     }
 
 
-def _fallback_overview(account: Account, error_message: Optional[str] = None, stale: bool = False) -> dict:
+def _fallback_overview(
+    account: Account, error_message: Optional[str] = None, stale: bool = False
+) -> dict:
     data = {
         "plan_type": _normalize_plan_type(account.subscription_type),
-        "plan_source": "db.subscription_type" if account.subscription_type else "default",
+        "plan_source": (
+            "db.subscription_type" if account.subscription_type else "default"
+        ),
         "hourly_quota": _build_unknown_quota(),
         "weekly_quota": _build_unknown_quota(),
         "code_review_quota": _build_unknown_quota(),
@@ -522,7 +560,9 @@ def _write_current_account_snapshot(account: Account) -> Optional[str]:
             "workspace_id": account.workspace_id,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
-        output_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        output_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         return str(output_file)
     except Exception as exc:
         logger.warning(f"写入 current_codex_account.json 失败: {exc}")
@@ -609,7 +649,11 @@ def _get_account_overview_data(
 ) -> tuple[dict, bool]:
     updated = False
     extra_data = account.extra_data if isinstance(account.extra_data, dict) else {}
-    cached = extra_data.get(OVERVIEW_EXTRA_DATA_KEY) if isinstance(extra_data, dict) else None
+    cached = (
+        extra_data.get(OVERVIEW_EXTRA_DATA_KEY)
+        if isinstance(extra_data, dict)
+        else None
+    )
     cache_stale = _is_overview_cache_stale(cached)
 
     if not account.access_token:
@@ -618,7 +662,10 @@ def _get_account_overview_data(
             stale_cached["stale"] = True
             stale_cached["error"] = "missing_access_token"
             return stale_cached, updated
-        return _fallback_overview(account, error_message="missing_access_token"), updated
+        return (
+            _fallback_overview(account, error_message="missing_access_token"),
+            updated,
+        )
 
     if not force_refresh and cached and not cache_stale:
         return cached, updated
@@ -631,7 +678,10 @@ def _get_account_overview_data(
                 stale_cached["stale"] = True
                 stale_cached.setdefault("error", "cache_stale")
             return stale_cached, updated
-        return _fallback_overview(account, error_message="cache_miss", stale=True), updated
+        return (
+            _fallback_overview(account, error_message="cache_miss", stale=True),
+            updated,
+        )
 
     try:
         overview = fetch_codex_overview(account, proxy=proxy)
@@ -698,6 +748,7 @@ def _get_account_overview_data(
 
 
 # ============== API Endpoints ==============
+
 
 @router.post("", response_model=AccountResponse)
 async def create_manual_account(request: ManualAccountCreateRequest):
@@ -798,20 +849,38 @@ async def import_accounts(request: ImportAccountsRequest):
             except Exception as exc:
                 result["failed"] += 1
                 result["errors"].append(
-                    {"index": index, "email": str(raw_item.get("email") or "-"), "error": f"字段格式错误: {exc}"}
+                    {
+                        "index": index,
+                        "email": str(raw_item.get("email") or "-"),
+                        "error": f"字段格式错误: {exc}",
+                    }
                 )
                 continue
 
             token_bundle = item.tokens if isinstance(item.tokens, dict) else {}
-            access_token = _pick_first_text(item.access_token, token_bundle.get("access_token"), token_bundle.get("accessToken"))
-            refresh_token = _pick_first_text(item.refresh_token, token_bundle.get("refresh_token"), token_bundle.get("refreshToken"))
-            id_token = _pick_first_text(item.id_token, token_bundle.get("id_token"), token_bundle.get("idToken"))
+            access_token = _pick_first_text(
+                item.access_token,
+                token_bundle.get("access_token"),
+                token_bundle.get("accessToken"),
+            )
+            refresh_token = _pick_first_text(
+                item.refresh_token,
+                token_bundle.get("refresh_token"),
+                token_bundle.get("refreshToken"),
+            )
+            id_token = _pick_first_text(
+                item.id_token, token_bundle.get("id_token"), token_bundle.get("idToken")
+            )
             session_token = _pick_first_text(
                 item.session_token,
                 token_bundle.get("session_token"),
                 token_bundle.get("sessionToken"),
             )
-            client_id = _pick_first_text(item.client_id, token_bundle.get("client_id"), token_bundle.get("clientId"))
+            client_id = _pick_first_text(
+                item.client_id,
+                token_bundle.get("client_id"),
+                token_bundle.get("clientId"),
+            )
 
             access_claims = _decode_jwt_payload_unverified(access_token)
             id_claims = _decode_jwt_payload_unverified(id_token)
@@ -836,7 +905,9 @@ async def import_accounts(request: ImportAccountsRequest):
 
             if not client_id:
                 id_aud = id_claims.get("aud")
-                id_aud_first = id_aud[0] if isinstance(id_aud, list) and id_aud else None
+                id_aud_first = (
+                    id_aud[0] if isinstance(id_aud, list) and id_aud else None
+                )
                 client_id = _pick_first_text(
                     access_claims.get("client_id"),
                     id_aud_first,
@@ -845,7 +916,9 @@ async def import_accounts(request: ImportAccountsRequest):
             email = str(item.email or "").strip().lower()
             if not email or "@" not in email:
                 result["failed"] += 1
-                result["errors"].append({"index": index, "email": email or "-", "error": "邮箱格式不正确"})
+                result["errors"].append(
+                    {"index": index, "email": email or "-", "error": "邮箱格式不正确"}
+                )
                 continue
 
             status = str(item.status or AccountStatus.ACTIVE.value).strip().lower()
@@ -857,10 +930,12 @@ async def import_accounts(request: ImportAccountsRequest):
             subscription_type = (
                 _normalize_subscription_input(item.subscription_type)
                 or _normalize_subscription_input(item.plan_type)
-                or _normalize_subscription_input(_pick_first_text(
-                    raw_item.get("plan_type"),
-                    auth_claims.get("chatgpt_plan_type"),
-                ))
+                or _normalize_subscription_input(
+                    _pick_first_text(
+                        raw_item.get("plan_type"),
+                        auth_claims.get("chatgpt_plan_type"),
+                    )
+                )
             )
             metadata = dict(item.metadata) if isinstance(item.metadata, dict) else {}
             for extra_key in (
@@ -907,12 +982,16 @@ async def import_accounts(request: ImportAccountsRequest):
                         "extra_data": metadata,
                         "last_refresh": utcnow_naive(),
                     }
-                    clean_update_payload = {k: v for k, v in update_payload.items() if v is not None}
+                    clean_update_payload = {
+                        k: v for k, v in update_payload.items() if v is not None
+                    }
                     account = crud.update_account(db, exists.id, **clean_update_payload)
                     if account is None:
                         raise RuntimeError("更新账号失败")
                     account.subscription_type = subscription_type
-                    account.subscription_at = utcnow_naive() if subscription_type else None
+                    account.subscription_at = (
+                        utcnow_naive() if subscription_type else None
+                    )
                     db.commit()
                     result["updated"] += 1
                     continue
@@ -942,7 +1021,9 @@ async def import_accounts(request: ImportAccountsRequest):
                 result["created"] += 1
             except Exception as exc:
                 result["failed"] += 1
-                result["errors"].append({"index": index, "email": email, "error": str(exc)})
+                result["errors"].append(
+                    {"index": index, "email": email, "error": str(exc)}
+                )
 
     return result
 
@@ -976,8 +1057,8 @@ async def list_accounts(
         if search:
             search_pattern = f"%{search}%"
             query = query.filter(
-                (Account.email.ilike(search_pattern)) |
-                (Account.account_id.ilike(search_pattern))
+                (Account.email.ilike(search_pattern))
+                | (Account.account_id.ilike(search_pattern))
             )
 
         # 统计总数
@@ -985,11 +1066,15 @@ async def list_accounts(
 
         # 分页
         offset = (page - 1) * page_size
-        accounts = query.order_by(Account.created_at.desc()).offset(offset).limit(page_size).all()
+        accounts = (
+            query.order_by(Account.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
 
         return AccountListResponse(
-            total=total,
-            accounts=[account_to_response(acc) for acc in accounts]
+            total=total, accounts=[account_to_response(acc) for acc in accounts]
         )
 
 
@@ -1010,7 +1095,9 @@ async def list_accounts_overview_cards(
         )
         if search:
             pattern = f"%{search}%"
-            query = query.filter((Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern)))
+            query = query.filter(
+                (Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern))
+            )
         if status:
             query = _apply_status_filter(query, status)
         if email_service:
@@ -1027,7 +1114,9 @@ async def list_accounts_overview_cards(
         # 需要强制刷新时统一走 /overview/refresh。
         allow_network = False
         if refresh:
-            logger.info("overview/cards 接口忽略 refresh 参数，改由 /overview/refresh 执行远端刷新")
+            logger.info(
+                "overview/cards 接口忽略 refresh 参数，改由 /overview/refresh 执行远端刷新"
+            )
 
         rows = []
         db_updated = False
@@ -1047,7 +1136,9 @@ async def list_accounts_overview_cards(
             db_plan_raw = account.subscription_type
             has_db_subscription = bool(str(db_plan_raw or "").strip())
             # 与账号管理保持一致：卡片套餐优先使用 DB 的 subscription_type。
-            effective_plan_raw = db_plan_raw if has_db_subscription else overview_plan_raw
+            effective_plan_raw = (
+                db_plan_raw if has_db_subscription else overview_plan_raw
+            )
             effective_plan_source = (
                 "db.subscription_type"
                 if has_db_subscription
@@ -1063,16 +1154,26 @@ async def list_accounts_overview_cards(
                     "email": account.email,
                     "status": account.status,
                     "email_service": account.email_service,
-                    "created_at": account.created_at.isoformat() if account.created_at else None,
-                    "last_refresh": account.last_refresh.isoformat() if account.last_refresh else None,
+                    "created_at": (
+                        account.created_at.isoformat() if account.created_at else None
+                    ),
+                    "last_refresh": (
+                        account.last_refresh.isoformat()
+                        if account.last_refresh
+                        else None
+                    ),
                     "current": account.id == current_account_id,
                     "has_access_token": bool(account.access_token),
                     "plan_type": _normalize_plan_type(effective_plan_raw),
                     "plan_source": effective_plan_source,
-                    "has_plus_or_team": _plan_to_subscription_type(effective_plan_raw) is not None,
-                    "hourly_quota": overview.get("hourly_quota") or _build_unknown_quota(),
-                    "weekly_quota": overview.get("weekly_quota") or _build_unknown_quota(),
-                    "code_review_quota": overview.get("code_review_quota") or _build_unknown_quota(),
+                    "has_plus_or_team": _plan_to_subscription_type(effective_plan_raw)
+                    is not None,
+                    "hourly_quota": overview.get("hourly_quota")
+                    or _build_unknown_quota(),
+                    "weekly_quota": overview.get("weekly_quota")
+                    or _build_unknown_quota(),
+                    "code_review_quota": overview.get("code_review_quota")
+                    or _build_unknown_quota(),
                     "overview_fetched_at": overview.get("fetched_at"),
                     "overview_stale": bool(overview.get("stale")),
                     "overview_error": overview.get("error"),
@@ -1104,7 +1205,9 @@ async def list_accounts_overview_addable(
         query = db.query(Account)
         if search:
             pattern = f"%{search}%"
-            query = query.filter((Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern)))
+            query = query.filter(
+                (Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern))
+            )
         if status:
             query = _apply_status_filter(query, status)
         if email_service:
@@ -1125,7 +1228,9 @@ async def list_accounts_overview_addable(
                     "email_service": account.email_service,
                     "subscription_type": account.subscription_type or "free",
                     "has_access_token": bool(account.access_token),
-                    "created_at": account.created_at.isoformat() if account.created_at else None,
+                    "created_at": (
+                        account.created_at.isoformat() if account.created_at else None
+                    ),
                 }
             )
 
@@ -1146,7 +1251,9 @@ async def list_accounts_overview_selectable(
         query = db.query(Account)
         if search:
             pattern = f"%{search}%"
-            query = query.filter((Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern)))
+            query = query.filter(
+                (Account.email.ilike(pattern)) | (Account.account_id.ilike(pattern))
+            )
         if status:
             query = _apply_status_filter(query, status)
         if email_service:
@@ -1172,7 +1279,9 @@ async def list_accounts_overview_selectable(
                     "account_id": account.account_id or "",
                     "workspace_id": account.workspace_id or "",
                     "has_access_token": bool(account.access_token),
-                    "created_at": account.created_at.isoformat() if account.created_at else None,
+                    "created_at": (
+                        account.created_at.isoformat() if account.created_at else None
+                    ),
                 }
             )
 
@@ -1222,7 +1331,9 @@ async def restore_accounts_overview_card(account_id: int):
         if not account:
             raise HTTPException(status_code=404, detail="账号不存在")
         if not _is_paid_subscription(account.subscription_type):
-            raise HTTPException(status_code=400, detail="仅 plus/team 账号可进入 Codex 账号管理")
+            raise HTTPException(
+                status_code=400, detail="仅 plus/team 账号可进入 Codex 账号管理"
+            )
 
         _set_overview_card_removed(account, False)
         db.commit()
@@ -1237,7 +1348,9 @@ async def attach_accounts_overview_card(account_id: int):
         if not account:
             raise HTTPException(status_code=404, detail="账号不存在")
         if not _is_paid_subscription(account.subscription_type):
-            raise HTTPException(status_code=400, detail="仅 plus/team 账号可进入 Codex 账号管理")
+            raise HTTPException(
+                status_code=400, detail="仅 plus/team 账号可进入 Codex 账号管理"
+            )
 
         was_removed = _is_overview_card_removed(account)
         _set_overview_card_removed(account, False)
@@ -1269,9 +1382,14 @@ async def refresh_accounts_overview(request: OverviewRefreshRequest):
         )
         if not ids:
             # 默认仅刷新“卡片里可见的付费账号”，避免无关账号导致全量阻塞。
-            candidates = db.query(Account).filter(
-                func.lower(Account.subscription_type).in_(PAID_SUBSCRIPTION_TYPES)
-            ).order_by(Account.created_at.desc()).all()
+            candidates = (
+                db.query(Account)
+                .filter(
+                    func.lower(Account.subscription_type).in_(PAID_SUBSCRIPTION_TYPES)
+                )
+                .order_by(Account.created_at.desc())
+                .all()
+            )
             ids = [acc.id for acc in candidates if not _is_overview_card_removed(acc)]
 
         logger.info(
@@ -1286,10 +1404,16 @@ async def refresh_accounts_overview(request: OverviewRefreshRequest):
             account = crud.get_account_by_id(db, account_id)
             if not account:
                 result["failed_count"] += 1
-                result["details"].append({"id": account_id, "success": False, "error": "账号不存在"})
-                logger.warning("账号总览刷新失败: account_id=%s error=账号不存在", account_id)
+                result["details"].append(
+                    {"id": account_id, "success": False, "error": "账号不存在"}
+                )
+                logger.warning(
+                    "账号总览刷新失败: account_id=%s error=账号不存在", account_id
+                )
                 continue
-            if (not _is_paid_subscription(account.subscription_type)) or _is_overview_card_removed(account):
+            if (
+                not _is_paid_subscription(account.subscription_type)
+            ) or _is_overview_card_removed(account):
                 result["details"].append(
                     {
                         "id": account.id,
@@ -1311,7 +1435,10 @@ async def refresh_accounts_overview(request: OverviewRefreshRequest):
             if updated:
                 db.commit()
 
-            if overview.get("hourly_quota", {}).get("status") == "unknown" and overview.get("weekly_quota", {}).get("status") == "unknown":
+            if (
+                overview.get("hourly_quota", {}).get("status") == "unknown"
+                and overview.get("weekly_quota", {}).get("status") == "unknown"
+            ):
                 result["failed_count"] += 1
                 result["details"].append(
                     {
@@ -1420,7 +1547,11 @@ async def get_account_tokens(account_id: int):
             raise HTTPException(status_code=404, detail="账号不存在")
 
         resolved_session_token = _resolve_account_session_token(account)
-        session_source = "db" if str(account.session_token or "").strip() else ("cookies" if resolved_session_token else "none")
+        session_source = (
+            "db"
+            if str(account.session_token or "").strip()
+            else ("cookies" if resolved_session_token else "none")
+        )
 
         # 若 DB 为空但 cookies 可解析到 session_token，自动回写，避免后续重复解析。
         if resolved_session_token and not str(account.session_token or "").strip():
@@ -1501,8 +1632,12 @@ async def batch_delete_accounts(request: BatchDeleteRequest):
     """批量删除账号"""
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         deleted_count = 0
         errors = []
@@ -1519,7 +1654,7 @@ async def batch_delete_accounts(request: BatchDeleteRequest):
         return {
             "success": True,
             "deleted_count": deleted_count,
-            "errors": errors if errors else None
+            "errors": errors if errors else None,
         }
 
 
@@ -1545,12 +1680,13 @@ async def batch_update_accounts(request: BatchUpdateRequest):
         return {
             "success": True,
             "updated_count": updated_count,
-            "errors": errors if errors else None
+            "errors": errors if errors else None,
         }
 
 
 class BatchExportRequest(BaseModel):
     """批量导出请求"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -1563,29 +1699,41 @@ async def export_accounts_json(request: BatchExportRequest):
     """导出账号为 JSON 格式"""
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
         export_data = []
         for acc in accounts:
-            export_data.append({
-                "email": acc.email,
-                "password": acc.password,
-                "client_id": acc.client_id,
-                "account_id": acc.account_id,
-                "workspace_id": acc.workspace_id,
-                "access_token": acc.access_token,
-                "refresh_token": acc.refresh_token,
-                "id_token": acc.id_token,
-                "session_token": acc.session_token,
-                "email_service": acc.email_service,
-                "registered_at": acc.registered_at.isoformat() if acc.registered_at else None,
-                "last_refresh": acc.last_refresh.isoformat() if acc.last_refresh else None,
-                "expires_at": acc.expires_at.isoformat() if acc.expires_at else None,
-                "status": acc.status,
-            })
+            export_data.append(
+                {
+                    "email": acc.email,
+                    "password": acc.password,
+                    "client_id": acc.client_id,
+                    "account_id": acc.account_id,
+                    "workspace_id": acc.workspace_id,
+                    "access_token": acc.access_token,
+                    "refresh_token": acc.refresh_token,
+                    "id_token": acc.id_token,
+                    "session_token": acc.session_token,
+                    "email_service": acc.email_service,
+                    "registered_at": (
+                        acc.registered_at.isoformat() if acc.registered_at else None
+                    ),
+                    "last_refresh": (
+                        acc.last_refresh.isoformat() if acc.last_refresh else None
+                    ),
+                    "expires_at": (
+                        acc.expires_at.isoformat() if acc.expires_at else None
+                    ),
+                    "status": acc.status,
+                }
+            )
 
         # 生成文件名
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1597,7 +1745,7 @@ async def export_accounts_json(request: BatchExportRequest):
         return StreamingResponse(
             iter([content]),
             media_type="application/json",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
 
@@ -1609,8 +1757,12 @@ async def export_accounts_csv(request: BatchExportRequest):
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
@@ -1619,32 +1771,47 @@ async def export_accounts_csv(request: BatchExportRequest):
         writer = csv.writer(output)
 
         # 写入表头
-        writer.writerow([
-            "ID", "Email", "Password", "Client ID",
-            "Account ID", "Workspace ID",
-            "Access Token", "Refresh Token", "ID Token", "Session Token",
-            "Email Service", "Status", "Registered At", "Last Refresh", "Expires At"
-        ])
+        writer.writerow(
+            [
+                "ID",
+                "Email",
+                "Password",
+                "Client ID",
+                "Account ID",
+                "Workspace ID",
+                "Access Token",
+                "Refresh Token",
+                "ID Token",
+                "Session Token",
+                "Email Service",
+                "Status",
+                "Registered At",
+                "Last Refresh",
+                "Expires At",
+            ]
+        )
 
         # 写入数据
         for acc in accounts:
-            writer.writerow([
-                acc.id,
-                acc.email,
-                acc.password or "",
-                acc.client_id or "",
-                acc.account_id or "",
-                acc.workspace_id or "",
-                acc.access_token or "",
-                acc.refresh_token or "",
-                acc.id_token or "",
-                acc.session_token or "",
-                acc.email_service,
-                acc.status,
-                acc.registered_at.isoformat() if acc.registered_at else "",
-                acc.last_refresh.isoformat() if acc.last_refresh else "",
-                acc.expires_at.isoformat() if acc.expires_at else ""
-            ])
+            writer.writerow(
+                [
+                    acc.id,
+                    acc.email,
+                    acc.password or "",
+                    acc.client_id or "",
+                    acc.account_id or "",
+                    acc.workspace_id or "",
+                    acc.access_token or "",
+                    acc.refresh_token or "",
+                    acc.id_token or "",
+                    acc.session_token or "",
+                    acc.email_service,
+                    acc.status,
+                    acc.registered_at.isoformat() if acc.registered_at else "",
+                    acc.last_refresh.isoformat() if acc.last_refresh else "",
+                    acc.expires_at.isoformat() if acc.expires_at else "",
+                ]
+            )
 
         # 生成文件名
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1653,7 +1820,7 @@ async def export_accounts_csv(request: BatchExportRequest):
         return StreamingResponse(
             iter([output.getvalue()]),
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
 
@@ -1683,29 +1850,33 @@ async def export_accounts_sub2api(request: BatchExportRequest):
                     "gpt-5.2-codex": "gpt-5.2-codex",
                     "gpt-5.3": "gpt-5.3",
                     "gpt-5.3-codex": "gpt-5.3-codex",
-                    "gpt-5.4": "gpt-5.4"
+                    "gpt-5.4": "gpt-5.4",
                 },
                 "organization_id": acc.workspace_id or "",
-                "refresh_token": acc.refresh_token or ""
+                "refresh_token": acc.refresh_token or "",
             },
             "extra": {},
             "concurrency": 10,
             "priority": 1,
             "rate_multiplier": 1,
-            "auto_pause_on_expired": True
+            "auto_pause_on_expired": True,
         }
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         payload = {
             "proxies": [],
-            "accounts": [make_account_entry(acc) for acc in accounts]
+            "accounts": [make_account_entry(acc) for acc in accounts],
         }
         content = json.dumps(payload, ensure_ascii=False, indent=2)
 
@@ -1717,7 +1888,7 @@ async def export_accounts_sub2api(request: BatchExportRequest):
         return StreamingResponse(
             iter([content]),
             media_type="application/json",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
 
@@ -1726,34 +1897,43 @@ async def export_accounts_codex(request: BatchExportRequest):
     """????? Codex ???????"""
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         lines = []
         for acc in accounts:
-            lines.append(json.dumps({
-                "email": acc.email,
-                "password": acc.password or "",
-                "client_id": acc.client_id or "",
-                "access_token": acc.access_token or "",
-                "refresh_token": acc.refresh_token or "",
-                "session_token": acc.session_token or "",
-                "account_id": acc.account_id or "",
-                "workspace_id": acc.workspace_id or "",
-                "cookies": acc.cookies or "",
-                "type": "codex",
-                "source": getattr(acc, "source", None) or "manual",
-            }, ensure_ascii=False))
+            lines.append(
+                json.dumps(
+                    {
+                        "email": acc.email,
+                        "password": acc.password or "",
+                        "client_id": acc.client_id or "",
+                        "access_token": acc.access_token or "",
+                        "refresh_token": acc.refresh_token or "",
+                        "session_token": acc.session_token or "",
+                        "account_id": acc.account_id or "",
+                        "workspace_id": acc.workspace_id or "",
+                        "cookies": acc.cookies or "",
+                        "type": "codex",
+                        "source": getattr(acc, "source", None) or "manual",
+                    },
+                    ensure_ascii=False,
+                )
+            )
 
         content = "\n".join(lines)
         filename = f"codex_accounts_{timestamp}.jsonl"
         return StreamingResponse(
             iter([content]),
             media_type="application/x-ndjson",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
 
@@ -1762,8 +1942,12 @@ async def export_accounts_cpa(request: BatchExportRequest):
     """导出账号为 CPA Token JSON 格式（每个账号单独一个 JSON 文件，打包为 ZIP）"""
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
         accounts = db.query(Account).filter(Account.id.in_(ids)).all()
 
@@ -1778,7 +1962,7 @@ async def export_accounts_cpa(request: BatchExportRequest):
             return StreamingResponse(
                 iter([content]),
                 media_type="application/json",
-                headers={"Content-Disposition": f"attachment; filename={filename}"}
+                headers={"Content-Disposition": f"attachment; filename={filename}"},
             )
 
         # 多个账号打包为 ZIP
@@ -1794,7 +1978,7 @@ async def export_accounts_cpa(request: BatchExportRequest):
         return StreamingResponse(
             zip_buffer,
             media_type="application/zip",
-            headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+            headers={"Content-Disposition": f"attachment; filename={zip_filename}"},
         )
 
 
@@ -1808,21 +1992,23 @@ async def get_accounts_stats():
         total = db.query(func.count(Account.id)).scalar()
 
         # 按状态统计
-        status_stats = db.query(
-            Account.status,
-            func.count(Account.id)
-        ).group_by(Account.status).all()
+        status_stats = (
+            db.query(Account.status, func.count(Account.id))
+            .group_by(Account.status)
+            .all()
+        )
 
         # 按邮箱服务统计
-        service_stats = db.query(
-            Account.email_service,
-            func.count(Account.id)
-        ).group_by(Account.email_service).all()
+        service_stats = (
+            db.query(Account.email_service, func.count(Account.id))
+            .group_by(Account.email_service)
+            .all()
+        )
 
         return {
             "total": total,
             "by_status": {status: count for status, count in status_stats},
-            "by_email_service": {service: count for service, count in service_stats}
+            "by_email_service": {service: count for service, count in service_stats},
         }
 
 
@@ -1831,45 +2017,79 @@ async def get_accounts_overview():
     """获取账号总览统计信息（用于总览页面）"""
     with get_db() as db:
         total = db.query(func.count(Account.id)).scalar() or 0
-        active_count = db.query(func.count(Account.id)).filter(
-            Account.status == AccountStatus.ACTIVE.value
-        ).scalar() or 0
+        active_count = (
+            db.query(func.count(Account.id))
+            .filter(Account.status == AccountStatus.ACTIVE.value)
+            .scalar()
+            or 0
+        )
 
-        with_access_token = db.query(func.count(Account.id)).filter(
-            Account.access_token.isnot(None),
-            Account.access_token != "",
-        ).scalar() or 0
-        with_refresh_token = db.query(func.count(Account.id)).filter(
-            Account.refresh_token.isnot(None),
-            Account.refresh_token != "",
-        ).scalar() or 0
+        with_access_token = (
+            db.query(func.count(Account.id))
+            .filter(
+                Account.access_token.isnot(None),
+                Account.access_token != "",
+            )
+            .scalar()
+            or 0
+        )
+        with_refresh_token = (
+            db.query(func.count(Account.id))
+            .filter(
+                Account.refresh_token.isnot(None),
+                Account.refresh_token != "",
+            )
+            .scalar()
+            or 0
+        )
         without_access_token = max(total - with_access_token, 0)
 
-        cpa_uploaded_count = db.query(func.count(Account.id)).filter(
-            Account.cpa_uploaded.is_(True)
-        ).scalar() or 0
+        cpa_uploaded_count = (
+            db.query(func.count(Account.id))
+            .filter(Account.cpa_uploaded.is_(True))
+            .scalar()
+            or 0
+        )
 
-        status_stats = db.query(
-            Account.status,
-            func.count(Account.id),
-        ).group_by(Account.status).all()
+        status_stats = (
+            db.query(
+                Account.status,
+                func.count(Account.id),
+            )
+            .group_by(Account.status)
+            .all()
+        )
 
-        service_stats = db.query(
-            Account.email_service,
-            func.count(Account.id),
-        ).group_by(Account.email_service).all()
+        service_stats = (
+            db.query(
+                Account.email_service,
+                func.count(Account.id),
+            )
+            .group_by(Account.email_service)
+            .all()
+        )
 
-        source_stats = db.query(
-            Account.source,
-            func.count(Account.id),
-        ).group_by(Account.source).all()
+        source_stats = (
+            db.query(
+                Account.source,
+                func.count(Account.id),
+            )
+            .group_by(Account.source)
+            .all()
+        )
 
-        subscription_stats = db.query(
-            Account.subscription_type,
-            func.count(Account.id),
-        ).group_by(Account.subscription_type).all()
+        subscription_stats = (
+            db.query(
+                Account.subscription_type,
+                func.count(Account.id),
+            )
+            .group_by(Account.subscription_type)
+            .all()
+        )
 
-        recent_accounts = db.query(Account).order_by(Account.created_at.desc()).limit(10).all()
+        recent_accounts = (
+            db.query(Account).order_by(Account.created_at.desc()).limit(10).all()
+        )
 
         return {
             "total": total,
@@ -1881,10 +2101,13 @@ async def get_accounts_overview():
             },
             "cpa_uploaded_count": cpa_uploaded_count,
             "by_status": {status or "unknown": count for status, count in status_stats},
-            "by_email_service": {service or "unknown": count for service, count in service_stats},
+            "by_email_service": {
+                service or "unknown": count for service, count in service_stats
+            },
             "by_source": {source or "unknown": count for source, count in source_stats},
             "by_subscription": {
-                (subscription or "free"): count for subscription, count in subscription_stats
+                (subscription or "free"): count
+                for subscription, count in subscription_stats
             },
             "recent_accounts": [
                 {
@@ -1894,8 +2117,12 @@ async def get_accounts_overview():
                     "email_service": acc.email_service,
                     "source": acc.source,
                     "subscription_type": acc.subscription_type or "free",
-                    "created_at": acc.created_at.isoformat() if acc.created_at else None,
-                    "last_refresh": acc.last_refresh.isoformat() if acc.last_refresh else None,
+                    "created_at": (
+                        acc.created_at.isoformat() if acc.created_at else None
+                    ),
+                    "last_refresh": (
+                        acc.last_refresh.isoformat() if acc.last_refresh else None
+                    ),
                 }
                 for acc in recent_accounts
             ],
@@ -1904,13 +2131,16 @@ async def get_accounts_overview():
 
 # ============== Token 刷新相关 ==============
 
+
 class TokenRefreshRequest(BaseModel):
     """Token 刷新请求"""
+
     proxy: Optional[str] = None
 
 
 class BatchRefreshRequest(BaseModel):
     """批量刷新请求"""
+
     ids: List[int] = []
     proxy: Optional[str] = None
     select_all: bool = False
@@ -1921,11 +2151,13 @@ class BatchRefreshRequest(BaseModel):
 
 class TokenValidateRequest(BaseModel):
     """Token 验证请求"""
+
     proxy: Optional[str] = None
 
 
 class BatchValidateRequest(BaseModel):
     """批量验证请求"""
+
     ids: List[int] = []
     proxy: Optional[str] = None
     select_all: bool = False
@@ -1935,20 +2167,22 @@ class BatchValidateRequest(BaseModel):
 
 
 @router.post("/batch-refresh")
-async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: BackgroundTasks):
+async def batch_refresh_tokens(
+    request: BatchRefreshRequest, background_tasks: BackgroundTasks
+):
     """批量刷新账号 Token"""
     proxy = _get_proxy(request.proxy)
 
-    results = {
-        "success_count": 0,
-        "failed_count": 0,
-        "errors": []
-    }
+    results = {"success_count": 0, "failed_count": 0, "errors": []}
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
     for account_id in ids:
@@ -1958,7 +2192,9 @@ async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: B
                 results["success_count"] += 1
             else:
                 results["failed_count"] += 1
-                results["errors"].append({"id": account_id, "error": result.error_message})
+                results["errors"].append(
+                    {"id": account_id, "error": result.error_message}
+                )
         except Exception as e:
             results["failed_count"] += 1
             results["errors"].append({"id": account_id, "error": str(e)})
@@ -1967,7 +2203,9 @@ async def batch_refresh_tokens(request: BatchRefreshRequest, background_tasks: B
 
 
 @router.post("/{account_id}/refresh")
-async def refresh_account_token(account_id: int, request: Optional[TokenRefreshRequest] = Body(default=None)):
+async def refresh_account_token(
+    account_id: int, request: Optional[TokenRefreshRequest] = Body(default=None)
+):
     """刷新单个账号的 Token"""
     proxy = _get_proxy(request.proxy if request else None)
     result = do_refresh(account_id, proxy)
@@ -1976,39 +2214,34 @@ async def refresh_account_token(account_id: int, request: Optional[TokenRefreshR
         return {
             "success": True,
             "message": "Token 刷新成功",
-            "expires_at": result.expires_at.isoformat() if result.expires_at else None
+            "expires_at": result.expires_at.isoformat() if result.expires_at else None,
         }
     else:
-        return {
-            "success": False,
-            "error": result.error_message
-        }
+        return {"success": False, "error": result.error_message}
 
 
 def _run_batch_validate_tokens(request: BatchValidateRequest) -> Dict[str, Any]:
     """Run token validation synchronously so it can be reused by schedulers."""
     proxy = _get_proxy(request.proxy)
 
-    results = {
-        "valid_count": 0,
-        "invalid_count": 0,
-        "details": []
-    }
+    results = {"valid_count": 0, "invalid_count": 0, "details": []}
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
     for account_id in ids:
         try:
             is_valid, error = do_validate(account_id, proxy)
-            results["details"].append({
-                "id": account_id,
-                "valid": is_valid,
-                "error": error
-            })
+            results["details"].append(
+                {"id": account_id, "valid": is_valid, "error": error}
+            )
             if is_valid:
                 results["valid_count"] += 1
             else:
@@ -2019,15 +2252,15 @@ def _run_batch_validate_tokens(request: BatchValidateRequest) -> Dict[str, Any]:
                 with get_db() as db:
                     account = crud.get_account_by_id(db, account_id)
                     if account and account.status != AccountStatus.FAILED.value:
-                        crud.update_account(db, account_id, status=AccountStatus.FAILED.value)
+                        crud.update_account(
+                            db, account_id, status=AccountStatus.FAILED.value
+                        )
             except Exception:
                 pass
             results["invalid_count"] += 1
-            results["details"].append({
-                "id": account_id,
-                "valid": False,
-                "error": str(e)
-            })
+            results["details"].append(
+                {"id": account_id, "valid": False, "error": str(e)}
+            )
 
     return results
 
@@ -2103,28 +2336,29 @@ def run_quick_refresh_workflow(source: str = "manual") -> Dict[str, Any]:
 
 
 @router.post("/{account_id}/validate")
-async def validate_account_token(account_id: int, request: Optional[TokenValidateRequest] = Body(default=None)):
+async def validate_account_token(
+    account_id: int, request: Optional[TokenValidateRequest] = Body(default=None)
+):
     """验证单个账号的 Token 有效性"""
     proxy = _get_proxy(request.proxy if request else None)
     is_valid, error = do_validate(account_id, proxy)
 
-    return {
-        "id": account_id,
-        "valid": is_valid,
-        "error": error
-    }
+    return {"id": account_id, "valid": is_valid, "error": error}
 
 
 # ============== CPA 上传相关 ==============
 
+
 class CPAUploadRequest(BaseModel):
     """CPA 上传请求"""
+
     proxy: Optional[str] = None
     cpa_service_id: Optional[int] = None  # 指定 CPA 服务 ID，不传则使用全局配置
 
 
 class BatchCPAUploadRequest(BaseModel):
     """批量 CPA 上传请求"""
+
     ids: List[int] = []
     proxy: Optional[str] = None
     select_all: bool = False
@@ -2153,16 +2387,24 @@ async def batch_upload_accounts_to_cpa(request: BatchCPAUploadRequest):
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
-    results = batch_upload_to_cpa(ids, proxy, api_url=cpa_api_url, api_token=cpa_api_token)
+    results = batch_upload_to_cpa(
+        ids, proxy, api_url=cpa_api_url, api_token=cpa_api_token
+    )
     return results
 
 
 @router.post("/{account_id}/upload-cpa")
-async def upload_account_to_cpa(account_id: int, request: Optional[CPAUploadRequest] = Body(default=None)):
+async def upload_account_to_cpa(
+    account_id: int, request: Optional[CPAUploadRequest] = Body(default=None)
+):
     """上传单个账号到 CPA"""
 
     proxy = request.proxy if request and request.proxy else get_settings().proxy_url
@@ -2185,16 +2427,15 @@ async def upload_account_to_cpa(account_id: int, request: Optional[CPAUploadRequ
             raise HTTPException(status_code=404, detail="账号不存在")
 
         if not account.access_token:
-            return {
-                "success": False,
-                "error": "账号缺少 Token，无法上传"
-            }
+            return {"success": False, "error": "账号缺少 Token，无法上传"}
 
         # 生成 Token JSON
         token_data = generate_token_json(account)
 
         # 上传
-        success, message = upload_to_cpa(token_data, proxy, api_url=cpa_api_url, api_token=cpa_api_token)
+        success, message = upload_to_cpa(
+            token_data, proxy, api_url=cpa_api_url, api_token=cpa_api_token
+        )
 
         if success:
             account.cpa_uploaded = True
@@ -2207,6 +2448,7 @@ async def upload_account_to_cpa(account_id: int, request: Optional[CPAUploadRequ
 
 class Sub2ApiUploadRequest(BaseModel):
     """单账号 Sub2API 上传请求"""
+
     service_id: Optional[int] = None
     concurrency: int = 3
     priority: int = 50
@@ -2214,6 +2456,7 @@ class Sub2ApiUploadRequest(BaseModel):
 
 class BatchSub2ApiUploadRequest(BaseModel):
     """批量 Sub2API 上传请求"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -2246,27 +2489,41 @@ async def batch_upload_accounts_to_sub2api(request: BatchSub2ApiUploadRequest):
                 api_key = svcs[0].api_key
 
     if not api_url or not api_key:
-        raise HTTPException(status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置")
+        raise HTTPException(
+            status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置"
+        )
 
     with get_db() as db:
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
     results = batch_upload_to_sub2api(
-        ids, api_url, api_key,
+        ids,
+        api_url,
+        api_key,
         concurrency=request.concurrency,
         priority=request.priority,
     )
-    success_ids = [detail.get("id") for detail in (results.get("details") or []) if detail.get("success")]
+    success_ids = [
+        detail.get("id")
+        for detail in (results.get("details") or [])
+        if detail.get("success")
+    ]
     with get_db() as db:
         _mark_accounts_scheduler_uploaded(db, success_ids)
     return results
 
 
 @router.post("/{account_id}/upload-sub2api")
-async def upload_account_to_sub2api(account_id: int, request: Optional[Sub2ApiUploadRequest] = Body(default=None)):
+async def upload_account_to_sub2api(
+    account_id: int, request: Optional[Sub2ApiUploadRequest] = Body(default=None)
+):
     """上传单个账号到 Sub2API"""
 
     service_id = request.service_id if request else None
@@ -2290,7 +2547,9 @@ async def upload_account_to_sub2api(account_id: int, request: Optional[Sub2ApiUp
                 api_key = svcs[0].api_key
 
     if not api_url or not api_key:
-        raise HTTPException(status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置")
+        raise HTTPException(
+            status_code=400, detail="未找到可用的 Sub2API 服务，请先在设置中配置"
+        )
 
     with get_db() as db:
         account = crud.get_account_by_id(db, account_id)
@@ -2300,9 +2559,12 @@ async def upload_account_to_sub2api(account_id: int, request: Optional[Sub2ApiUp
             return {"success": False, "error": "账号缺少 Token，无法上传"}
 
         success, message = upload_to_sub2api(
-            [account], api_url, api_key,
-            concurrency=concurrency, priority=priority,
-            target_type="sub2api"
+            [account],
+            api_url,
+            api_key,
+            concurrency=concurrency,
+            priority=priority,
+            target_type="sub2api",
         )
         if success:
             _mark_accounts_scheduler_uploaded(db, [account.id])
@@ -2313,16 +2575,19 @@ async def upload_account_to_sub2api(account_id: int, request: Optional[Sub2ApiUp
 
 class NewApiUploadRequest(BaseModel):
     """单账号 new-api 上传请求"""
+
     service_id: Optional[int] = None
 
 
 class Codex2ApiUploadRequest(BaseModel):
     """单账号 Codex2API 上传请求"""
+
     service_id: Optional[int] = None
 
 
 class BatchNewApiUploadRequest(BaseModel):
     """批量 new-api 上传请求"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -2333,6 +2598,7 @@ class BatchNewApiUploadRequest(BaseModel):
 
 class BatchCodex2ApiUploadRequest(BaseModel):
     """批量 Codex2API 上传请求"""
+
     ids: List[int] = []
     select_all: bool = False
     status_filter: Optional[str] = None
@@ -2352,27 +2618,39 @@ async def batch_upload_accounts_to_new_api(request: BatchNewApiUploadRequest):
             service = services[0] if services else None
 
         if not service:
-            raise HTTPException(status_code=400, detail="未找到可用的 new-api 服务，请先在设置中配置")
+            raise HTTPException(
+                status_code=400, detail="未找到可用的 new-api 服务，请先在设置中配置"
+            )
 
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
     results = batch_upload_to_new_api(
         ids,
         service.api_url,
-        getattr(service, 'username', None),
-        getattr(service, 'password', None),
+        getattr(service, "username", None),
+        getattr(service, "password", None),
     )
-    success_ids = [detail.get("id") for detail in (results.get("details") or []) if detail.get("success")]
+    success_ids = [
+        detail.get("id")
+        for detail in (results.get("details") or [])
+        if detail.get("success")
+    ]
     with get_db() as db:
         _mark_accounts_scheduler_uploaded(db, success_ids)
     return results
 
 
 @router.post("/{account_id}/upload-new-api")
-async def upload_account_to_new_api(account_id: int, request: Optional[NewApiUploadRequest] = Body(default=None)):
+async def upload_account_to_new_api(
+    account_id: int, request: Optional[NewApiUploadRequest] = Body(default=None)
+):
     """上传单个账号到 new-api。"""
     service_id = request.service_id if request else None
 
@@ -2384,7 +2662,9 @@ async def upload_account_to_new_api(account_id: int, request: Optional[NewApiUpl
             service = services[0] if services else None
 
         if not service:
-            raise HTTPException(status_code=400, detail="未找到可用的 new-api 服务，请先在设置中配置")
+            raise HTTPException(
+                status_code=400, detail="未找到可用的 new-api 服务，请先在设置中配置"
+            )
 
         account = crud.get_account_by_id(db, account_id)
         if not account:
@@ -2395,12 +2675,16 @@ async def upload_account_to_new_api(account_id: int, request: Optional[NewApiUpl
         success, message = upload_to_new_api(
             [account],
             service.api_url,
-            getattr(service, 'username', None),
-            getattr(service, 'password', None),
+            getattr(service, "username", None),
+            getattr(service, "password", None),
         )
         if success:
             _mark_accounts_scheduler_uploaded(db, [account.id])
-        return {"success": success, "message": message if success else None, "error": None if success else message}
+        return {
+            "success": success,
+            "message": message if success else None,
+            "error": None if success else message,
+        }
 
 
 @router.post("/batch-upload-codex2api")
@@ -2414,11 +2698,17 @@ async def batch_upload_accounts_to_codex2api(request: BatchCodex2ApiUploadReques
             service = services[0] if services else None
 
         if not service:
-            raise HTTPException(status_code=400, detail="未找到可用的 Codex2API 服务，请先在设置中配置")
+            raise HTTPException(
+                status_code=400, detail="未找到可用的 Codex2API 服务，请先在设置中配置"
+            )
 
         ids = resolve_account_ids(
-            db, request.ids, request.select_all,
-            request.status_filter, request.email_service_filter, request.search_filter
+            db,
+            request.ids,
+            request.select_all,
+            request.status_filter,
+            request.email_service_filter,
+            request.search_filter,
         )
 
     results = batch_upload_to_codex2api(
@@ -2426,14 +2716,20 @@ async def batch_upload_accounts_to_codex2api(request: BatchCodex2ApiUploadReques
         service.api_url,
         service.admin_key,
     )
-    success_ids = [detail.get("id") for detail in (results.get("details") or []) if detail.get("success")]
+    success_ids = [
+        detail.get("id")
+        for detail in (results.get("details") or [])
+        if detail.get("success")
+    ]
     with get_db() as db:
         _mark_accounts_scheduler_uploaded(db, success_ids)
     return results
 
 
 @router.post("/{account_id}/upload-codex2api")
-async def upload_account_to_codex2api(account_id: int, request: Optional[Codex2ApiUploadRequest] = Body(default=None)):
+async def upload_account_to_codex2api(
+    account_id: int, request: Optional[Codex2ApiUploadRequest] = Body(default=None)
+):
     """上传单个账号到 Codex2API。"""
     service_id = request.service_id if request else None
 
@@ -2445,13 +2741,18 @@ async def upload_account_to_codex2api(account_id: int, request: Optional[Codex2A
             service = services[0] if services else None
 
         if not service:
-            raise HTTPException(status_code=400, detail="未找到可用的 Codex2API 服务，请先在设置中配置")
+            raise HTTPException(
+                status_code=400, detail="未找到可用的 Codex2API 服务，请先在设置中配置"
+            )
 
         account = crud.get_account_by_id(db, account_id)
         if not account:
             raise HTTPException(status_code=404, detail="账号不存在")
         if not (account.refresh_token or account.access_token):
-            return {"success": False, "error": "账号缺少 refresh_token / access_token，无法上传"}
+            return {
+                "success": False,
+                "error": "账号缺少 refresh_token / access_token，无法上传",
+            }
 
         success, message = upload_to_codex2api(
             [account],
@@ -2460,10 +2761,15 @@ async def upload_account_to_codex2api(account_id: int, request: Optional[Codex2A
         )
         if success:
             _mark_accounts_scheduler_uploaded(db, [account.id])
-        return {"success": success, "message": message if success else None, "error": None if success else message}
+        return {
+            "success": success,
+            "message": message if success else None,
+            "error": None if success else message,
+        }
 
 
 # ============== Inbox Code ==============
+
 
 def _build_inbox_config(db, service_type, email: str) -> dict:
     """根据账号邮箱服务类型从数据库构建服务配置（不传 proxy_url）"""
@@ -2482,7 +2788,11 @@ def _build_inbox_config(db, service_type, email: str) -> dict:
         settings = get_settings()
         return {
             "base_url": settings.yyds_mail_base_url,
-            "api_key": settings.yyds_mail_api_key.get_secret_value() if settings.yyds_mail_api_key else "",
+            "api_key": (
+                settings.yyds_mail_api_key.get_secret_value()
+                if settings.yyds_mail_api_key
+                else ""
+            ),
             "default_domain": settings.yyds_mail_default_domain,
             "timeout": settings.yyds_mail_timeout,
             "max_retries": settings.yyds_mail_max_retries,
@@ -2491,10 +2801,15 @@ def _build_inbox_config(db, service_type, email: str) -> dict:
     if service_type == EST.MOE_MAIL:
         # 按域名后缀匹配，找不到则取 priority 最小的
         domain = email.split("@")[1] if "@" in email else ""
-        services = db.query(EmailServiceModel).filter(
-            EmailServiceModel.service_type == "moe_mail",
-            EmailServiceModel.enabled == True
-        ).order_by(EmailServiceModel.priority.asc()).all()
+        services = (
+            db.query(EmailServiceModel)
+            .filter(
+                EmailServiceModel.service_type == "moe_mail",
+                EmailServiceModel.enabled == True,
+            )
+            .order_by(EmailServiceModel.priority.asc())
+            .all()
+        )
         svc = None
         for s in services:
             cfg = s.config or {}
@@ -2524,13 +2839,14 @@ def _build_inbox_config(db, service_type, email: str) -> dict:
         return None
 
     query = db.query(EmailServiceModel).filter(
-        EmailServiceModel.service_type == db_type,
-        EmailServiceModel.enabled == True
+        EmailServiceModel.service_type == db_type, EmailServiceModel.enabled == True
     )
     if service_type == EST.OUTLOOK:
         # 按 config.email 匹配账号 email
         services = query.all()
-        svc = next((s for s in services if (s.config or {}).get("email") == email), None)
+        svc = next(
+            (s for s in services if (s.config or {}).get("email") == email), None
+        )
     else:
         svc = query.order_by(EmailServiceModel.priority.asc()).first()
 
@@ -2564,9 +2880,7 @@ async def get_account_inbox_code(account_id: int):
         try:
             svc = EmailServiceFactory.create(service_type, config)
             code = svc.get_verification_code(
-                account.email,
-                email_id=account.email_service_id,
-                timeout=12
+                account.email, email_id=account.email_service_id, timeout=12
             )
         except Exception as e:
             return {"success": False, "error": str(e)}
